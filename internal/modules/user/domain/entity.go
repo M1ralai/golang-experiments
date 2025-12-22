@@ -1,14 +1,16 @@
 package domain
 
+import "github.com/google/uuid"
+
 type User struct {
-	Id       int    `json:"id" db:"id"`
-	Username string `json:"username" db:"username" validate:"required"`
-	Password string `json:"password,omitempty" db:"password" validate:"required"`
-	Role     string `json:"role" db:"role" validate:"required"`
-	Ad       string `json:"ad" db:"ad"`
-	Soyad    string `json:"soyad" db:"soyad"`
-	Telefon  string `json:"telefon" db:"telefon"`
-	Email    string `json:"email" db:"email"`
+	Id       uuid.UUID `json:"id" db:"id"`
+	Username string    `json:"username" db:"username" validate:"required"`
+	Password string    `json:"password,omitempty" db:"password" validate:"required"`
+	Role     string    `json:"role" db:"role" validate:"required"`
+	Ad       string    `json:"ad" db:"ad"`
+	Soyad    string    `json:"soyad" db:"soyad"`
+	Telefon  string    `json:"telefon" db:"telefon"`
+	Email    string    `json:"email" db:"email"`
 }
 
 type CreateUserRequest struct {

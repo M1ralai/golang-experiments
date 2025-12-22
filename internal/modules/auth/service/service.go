@@ -35,10 +35,10 @@ type AuthService interface {
 
 type authService struct {
 	userRepo userDomain.UserRepository
-	logger   *logger.ZapLogger
+	logger   logger.Logger
 }
 
-func NewService(userRepository userDomain.UserRepository, logger *logger.ZapLogger) AuthService {
+func NewService(userRepository userDomain.UserRepository, logger logger.Logger) AuthService {
 	return &authService{
 		userRepo: userRepository,
 		logger:   logger,
@@ -68,6 +68,7 @@ func (s *authService) Login(req *domain.LoginRequest) (*domain.LoginResponse, er
 
 	expirationTime := time.Now().Add(24 * time.Hour)
 	claims := &domain.Claims{
+		UserID:   user.Id.String(),
 		Username: user.Username,
 		Role:     user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -99,6 +100,7 @@ func (s *authService) Login(req *domain.LoginRequest) (*domain.LoginResponse, er
 func (s *authService) generateTokenForTestUser(username, role, ad, soyad string) (*domain.LoginResponse, error) {
 	expirationTime := time.Now().Add(24 * time.Hour)
 	claims := &domain.Claims{
+		UserID:   "00000000-0000-0000-0000-000000000000", // Test user UUID
 		Username: username,
 		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{

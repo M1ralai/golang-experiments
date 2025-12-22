@@ -39,7 +39,7 @@ func (r *PostgresUserRepository) Create(user *domain.User) error {
 	return err
 }
 
-func (r *PostgresUserRepository) Delete(id int) error {
+func (r *PostgresUserRepository) Delete(id string) error {
 	query := `DELETE FROM users WHERE id = $1`
 	_, err := r.db.Exec(query, id)
 	return err

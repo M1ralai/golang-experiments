@@ -7,5 +7,5 @@ type UserRepository interface {
 
 	Create(user *User) error
 
-	Delete(id int) error
+	Delete(id string) error
 }

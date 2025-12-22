@@ -1,7 +1,7 @@
 # Auth Module API Documentation
 
 ## POST /login
-Kullanıcı girişi yapar.
+Kullanıcı girişi yapar ve JWT token döner.
 
 ### Request Body
 ```json
@@ -28,6 +28,22 @@ Kullanıcı girişi yapar.
 }
 ```
 
+### JWT Token Payload
+Token decode edildiğinde aşağıdaki claims içerir:
+```json
+{
+  "user_id": "uuid",
+  "username": "string",
+  "role": "string",
+  "exp": 1234567890
+}
+```
+
 ### Validation Rules
 - **username**: Zorunlu (required)
 - **password**: Zorunlu (required)
+
+### Test Kullanıcıları
+Geliştirme ortamında aşağıdaki test kullanıcıları kullanılabilir:
+- `admin` / `123` - ADMIN rolü
+- `sekreter` / `123` - SEKRETER rolü

@@ -12,15 +12,15 @@ import (
 type UserService interface {
 	ListUsers() ([]domain.User, error)
 	CreateUser(ctx context.Context, req *domain.CreateUserRequest) (*domain.User, error)
-	DeleteUser(ctx context.Context, id int) error
+	DeleteUser(ctx context.Context, id string) error
 }
 
 type userService struct {
 	repo   domain.UserRepository
-	logger *logger.ZapLogger
+	logger logger.Logger
 }
 
-func NewService(repo domain.UserRepository, logger *logger.ZapLogger) UserService {
+func NewService(repo domain.UserRepository, logger logger.Logger) UserService {
 	return &userService{
 		repo:   repo,
 		logger: logger,
@@ -80,7 +80,7 @@ func (s *userService) CreateUser(ctx context.Context, req *domain.CreateUserRequ
 	return user, nil
 }
 
-func (s *userService) DeleteUser(ctx context.Context, id int) error {
+func (s *userService) DeleteUser(ctx context.Context, id string) error {
 	err := s.repo.Delete(id)
 	if err != nil {
 		s.logger.Error("Failed to delete user", err, map[string]interface{}{"user_id": id})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/M1ralai/go-modular-monolith-template/internal/common/utils"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/logger"
 	"github.com/M1ralai/go-modular-monolith-template/internal/modules/task/domain"
 	"github.com/google/uuid"
@@ -24,14 +25,14 @@ type taskService struct {
 	taskRepo     domain.TaskRepository
 	assignRepo   domain.AssignmentRepository
 	activityRepo domain.ActivityRepository
-	logger       *logger.ZapLogger
+	logger       logger.Logger
 }
 
 func NewTaskService(
 	taskRepo domain.TaskRepository,
 	assignRepo domain.AssignmentRepository,
 	activityRepo domain.ActivityRepository,
-	logger *logger.ZapLogger,
+	logger logger.Logger,
 ) TaskService {
 	return &taskService{
 		taskRepo:     taskRepo,
@@ -42,7 +43,11 @@ func NewTaskService(
 }
 
 func (s *taskService) CreateTask(ctx context.Context, req *domain.CreateTaskRequest) (*domain.Task, error) {
-	createdBy := uuid.New() // TODO: Get from context when auth is implemented
+	userIDStr := utils.GetUserIDFromContext(ctx)
+	createdBy, _ := uuid.Parse(userIDStr)
+	if createdBy == uuid.Nil {
+		createdBy = uuid.New() // Fallback for test/anonymous users
+	}
 
 	task := &domain.Task{
 		ID:        uuid.New(),
@@ -117,10 +122,15 @@ func (s *taskService) UpdateTaskStatus(ctx context.Context, taskID string, req *
 	}
 
 	// Log activity
+	userIDStr := utils.GetUserIDFromContext(ctx)
+	userID, _ := uuid.Parse(userIDStr)
+	if userID == uuid.Nil {
+		userID = uuid.New() // Fallback for test/anonymous users
+	}
 	activity := &domain.Activity{
 		ID:        uuid.New(),
 		TaskID:    uuid.MustParse(taskID),
-		UserID:    uuid.New(), // TODO: Get from context
+		UserID:    userID,
 		Action:    domain.ActivityTaskStatusChanged,
 		CreatedAt: time.Now(),
 	}

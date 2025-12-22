@@ -5,17 +5,23 @@ Tüm kayıtlı kullanıcıları listeler.
 
 ### Response Body (Success - 200)
 ```json
-[
-  {
-    "id": 1,
-    "username": "string",
-    "role": "string",
-    "ad": "string",
-    "soyad": "string",
-    "telefon": "string",
-    "email": "string"
-  }
-]
+{
+  "success": true,
+  "message": "Kullanıcılar başarıyla getirildi",
+  "data": [
+    {
+      "id": "uuid",
+      "username": "string",
+      "role": "string",
+      "ad": "string",
+      "soyad": "string",
+      "telefon": "string",
+      "email": "string"
+    }
+  ],
+  "error": null,
+  "timestamp": "string"
+}
 ```
 
 ---
@@ -42,7 +48,7 @@ Yeni bir sistem kullanıcısı oluşturur.
   "success": true,
   "message": "Kullanıcı başarıyla eklendi",
   "data": {
-    "id": 1,
+    "id": "uuid",
     "username": "string",
     "role": "string",
     "ad": "string",
@@ -50,7 +56,8 @@ Yeni bir sistem kullanıcısı oluşturur.
     "telefon": "string",
     "email": "string"
   },
-  "error": null
+  "error": null,
+  "timestamp": "string"
 }
 ```
 
@@ -62,13 +69,18 @@ Yeni bir sistem kullanıcısı oluşturur.
 ---
 
 ## DELETE /api/users/{id}
-ID'ye göre bir kullanıcıyı siler.
+UUID'ye göre bir kullanıcıyı siler.
+
+### Path Parameters
+- **id**: Kullanıcı UUID'si
 
 ### Response Body (Success - 200)
 ```json
 {
   "success": true,
   "message": "Kullanıcı başarıyla silindi",
-  "data": null
+  "data": null,
+  "error": null,
+  "timestamp": "string"
 }
 ```

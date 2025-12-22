@@ -3,7 +3,6 @@ package http
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
 	"github.com/M1ralai/go-modular-monolith-template/internal/common/utils"
 	"github.com/M1ralai/go-modular-monolith-template/internal/common/validation"
@@ -62,12 +61,7 @@ func (h *UserHandler) UserPost(w http.ResponseWriter, r *http.Request) {
 
 func (h *UserHandler) UserDelete(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		resp := utils.ErrorResponse("INVALID_INPUT", "Geçersiz ID", err.Error())
-		utils.Return(w, http.StatusBadRequest, resp)
-		return
-	}
+	id := vars["id"]
 
 	if err := h.service.DeleteUser(r.Context(), id); err != nil {
 		resp := utils.ErrorResponse("INTERNAL_ERROR", "Kullanıcı silinemedi", err.Error())

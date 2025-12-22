@@ -30,6 +30,7 @@ func getJWTKey() []byte {
 }
 
 type Claims struct {
+	UserID   string `json:"user_id"`
 	Username string `json:"username"`
 	Role     string `json:"role"`
 	jwt.RegisteredClaims
@@ -70,6 +71,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), utils.RoleKey, claims.Role)
 		ctx = context.WithValue(ctx, utils.UsernameKey, claims.Username)
+		ctx = context.WithValue(ctx, utils.UserIDKey, claims.UserID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

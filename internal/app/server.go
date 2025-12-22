@@ -32,10 +32,10 @@ import (
 type Server struct {
 	httpServer *http.Server
 	db         *sqlx.DB
-	logger     *logger.ZapLogger
+	logger     logger.LoggerWithMiddleware
 }
 
-func NewServer(db *sqlx.DB, zapLogger *logger.ZapLogger) *Server {
+func NewServer(db *sqlx.DB, zapLogger logger.LoggerWithMiddleware) *Server {
 
 	userRepository := userRepo.NewPostgresRepository(db)
 	userSvc := userService.NewService(userRepository, zapLogger)

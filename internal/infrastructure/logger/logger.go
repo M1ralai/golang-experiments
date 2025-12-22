@@ -12,12 +12,24 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// Logger interface for dependency injection and testability
+type Logger interface {
+	Info(msg string, details map[string]interface{})
+	Error(msg string, err error, details map[string]interface{})
+}
+
+// LoggerWithMiddleware extends Logger with HTTP middleware capability
+type LoggerWithMiddleware interface {
+	Logger
+	Middleware(next http.Handler) http.Handler
+}
+
 type ZapLogger struct {
 	zap *zap.Logger
 	db  *sqlx.DB
 }
 
-func NewLogger(db *sqlx.DB) *ZapLogger {
+func NewLogger(db *sqlx.DB) LoggerWithMiddleware {
 	config := zap.NewDevelopmentConfig()
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	config.EncoderConfig.TimeKey = "timestamp"

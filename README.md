@@ -29,7 +29,8 @@ JWT kimlik doğrulama, PostgreSQL veritabanı, yapısal loglama ve metrikler ile
 
 ## 🚀 Özellikler
 
-- **JWT Kimlik Doğrulama** - Rol destekli güvenli token tabanlı auth
+- **JWT Kimlik Doğrulama** - Rol ve user_id destekli güvenli token tabanlı auth
+- **UUID Primary Keys** - Tüm tablolarda UUID kullanımı
 - **Request Validasyonu** - go-playground/validator ile Türkçe çeviriler
 - **Veritabanı Migration'ları** - golang-migrate ile başlangıçta otomatik migration
 - **Yapısal Loglama** - Veritabanına kayıt yapan Zap logger
