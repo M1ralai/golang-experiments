@@ -19,6 +19,10 @@ import (
 	userRepo "github.com/M1ralai/go-modular-monolith-template/internal/modules/user/repository"
 	userService "github.com/M1ralai/go-modular-monolith-template/internal/modules/user/service"
 
+	taskHttp "github.com/M1ralai/go-modular-monolith-template/internal/modules/task/http"
+	taskRepo "github.com/M1ralai/go-modular-monolith-template/internal/modules/task/repository"
+	taskService "github.com/M1ralai/go-modular-monolith-template/internal/modules/task/service"
+
 	healthHttp "github.com/M1ralai/go-modular-monolith-template/internal/modules/health/http"
 
 	"github.com/gorilla/mux"
@@ -39,6 +43,13 @@ func NewServer(db *sqlx.DB, zapLogger *logger.ZapLogger) *Server {
 
 	authSvc := authService.NewService(userRepository, zapLogger)
 	authHandler := authHttp.NewHandler(authSvc)
+
+	// Task module setup
+	taskRepository := taskRepo.NewPostgresTaskRepository(db)
+	assignmentRepository := taskRepo.NewPostgresAssignmentRepository(db)
+	activityRepository := taskRepo.NewPostgresActivityRepository(db)
+	taskSvc := taskService.NewTaskService(taskRepository, assignmentRepository, activityRepository, zapLogger)
+	taskHandler := taskHttp.NewHandler(taskSvc)
 
 	healthHandler := healthHttp.NewHandler()
 
@@ -65,6 +76,15 @@ func NewServer(db *sqlx.DB, zapLogger *logger.ZapLogger) *Server {
 	api.HandleFunc("/users", userHandler.UsersGet).Methods("GET")
 	api.HandleFunc("/users", userHandler.UserPost).Methods("POST")
 	api.HandleFunc("/users/{id}", userHandler.UserDelete).Methods("DELETE")
+
+	// Task routes
+	api.HandleFunc("/tasks", taskHandler.ListTasks).Methods("GET")
+	api.HandleFunc("/tasks", taskHandler.CreateTask).Methods("POST")
+	api.HandleFunc("/tasks/{id}", taskHandler.GetTask).Methods("GET")
+	api.HandleFunc("/tasks/{id}/status", taskHandler.UpdateTaskStatus).Methods("PATCH")
+	api.HandleFunc("/tasks/{id}/assignments", taskHandler.GetTaskAssignments).Methods("GET")
+	api.HandleFunc("/tasks/{id}/assignments", taskHandler.AssignTask).Methods("POST")
+	api.HandleFunc("/tasks/assignments/{id}", taskHandler.UnassignTask).Methods("DELETE")
 
 	port := os.Getenv("API_PORT")
 	if port == "" {
