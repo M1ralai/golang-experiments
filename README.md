@@ -22,6 +22,7 @@ JWT kimlik doğrulama, PostgreSQL veritabanı, yapısal loglama ve metrikler ile
 │   └── modules/
 │       ├── auth/               # JWT kimlik doğrulama (login)
 │       ├── health/             # Health check endpoint
+│       ├── task/               # Task yönetimi (CRUD + atama)
 │       └── user/               # Kullanıcı CRUD işlemleri
 └── go.mod
 ```
@@ -36,6 +37,7 @@ JWT kimlik doğrulama, PostgreSQL veritabanı, yapısal loglama ve metrikler ile
 - **Graceful Shutdown** - Düzgün sinyal yönetimi ve temizlik
 - **Middleware Yığını** - Recovery, timeout, auth ve metrics middleware
 - **Temiz Mimari** - Domain → Repository → Service → HTTP katmanları
+- **Task Modülü** - Task yönetimi, kullanıcı ataması ve aktivite takibi
 
 ## 📋 Gereksinimler
 
@@ -76,30 +78,53 @@ JWT kimlik doğrulama, PostgreSQL veritabanı, yapısal loglama ve metrikler ile
 
 ### Korumalı Route'lar (JWT Gerekli)
 
-| Metod  | Endpoint        | Açıklama           |
-|--------|-----------------|-------------------|
+#### User Modülü
+
+| Metod  | Endpoint        | Açıklama                |
+|--------|-----------------|------------------------|
 | GET    | /api/users      | Tüm kullanıcıları listele |
 | POST   | /api/users      | Yeni kullanıcı oluştur   |
 | DELETE | /api/users/{id} | Kullanıcı sil           |
+
+#### Task Modülü
+
+| Metod  | Endpoint                       | Açıklama                    |
+|--------|--------------------------------|----------------------------|
+| GET    | /api/tasks                     | Tüm task'ları listele       |
+| POST   | /api/tasks                     | Yeni task oluştur          |
+| GET    | /api/tasks/{id}                | Task detayını getir        |
+| PATCH  | /api/tasks/{id}/status         | Task durumunu güncelle     |
+| GET    | /api/tasks/{id}/assignments    | Task atamalarını listele   |
+| POST   | /api/tasks/{id}/assignments    | Task'a kullanıcı ata       |
+| DELETE | /api/tasks/assignments/{id}    | Task atamasını kaldır      |
 
 ## 🔧 Yeni Modül Ekleme
 
 Katmanlı yapıyı takip et:
 
 1. **Domain** (`internal/modules/moduladi/domain/`)
-   - `entity.go` - Veri yapıları
+   - `entity.go` - Veri yapıları (JSON/DB tag'leri ile)
    - `repository.go` - Repository interface'i
 
 2. **Repository** (`internal/modules/moduladi/repository/`)
    - `pg_repository.go` - PostgreSQL implementasyonu
 
 3. **Service** (`internal/modules/moduladi/service/`)
-   - `service.go` - İş mantığı
+   - `service.go` - İş mantığı (infrastructure logger ile)
 
 4. **HTTP** (`internal/modules/moduladi/http/`)
    - `handler.go` - HTTP handler'ları
 
-5. `internal/app/server.go` dosyasında bağla
+5. **Migration** (`internal/infrastructure/database/migrations/`)
+   - `000XXX_create_xxx_tables.up.sql` - Tablo oluşturma
+   - `000XXX_create_xxx_tables.down.sql` - Rollback
+
+6. **Entegrasyon**
+   - `internal/app/server.go` dosyasında repo, service ve handler'ı bağla
+   - Route'ları ekle
+
+7. **Dokümantasyon**
+   - `api.md` - Endpoint dokümantasyonu
 
 ## 📦 Teknoloji Yığını
 
@@ -111,6 +136,25 @@ Katmanlı yapıyı takip et:
 - **Loglama**: uber/zap
 - **Metrikler**: prometheus/client_golang
 - **Şifreleme**: bcrypt
+
+## 📁 Modül Yapısı
+
+Her modül aşağıdaki yapıyı takip eder:
+
+```
+modules/
+└── moduladi/
+    ├── api.md              # API dokümantasyonu
+    ├── domain/
+    │   ├── entity.go       # Domain entity'leri
+    │   └── repository.go   # Repository interface'leri
+    ├── repository/
+    │   └── pg_repository.go # PostgreSQL implementasyonu
+    ├── service/
+    │   └── service.go      # İş mantığı katmanı
+    └── http/
+        └── handler.go      # HTTP handler'ları
+```
 
 ## 📄 Lisans
 
