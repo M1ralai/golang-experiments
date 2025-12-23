@@ -6,13 +6,15 @@ import (
 	"github.com/M1ralai/go-modular-monolith-template/internal/common/utils"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/logger"
 	"github.com/M1ralai/go-modular-monolith-template/internal/modules/user/domain"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type UserService interface {
 	ListUsers() ([]domain.User, error)
 	CreateUser(ctx context.Context, req *domain.CreateUserRequest) (*domain.User, error)
-	DeleteUser(ctx context.Context, id string) error
+	DeleteUser(ctx context.Context, id uuid.UUID) error
+	GetUserByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
 }
 
 type userService struct {
@@ -80,10 +82,10 @@ func (s *userService) CreateUser(ctx context.Context, req *domain.CreateUserRequ
 	return user, nil
 }
 
-func (s *userService) DeleteUser(ctx context.Context, id string) error {
+func (s *userService) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	err := s.repo.Delete(id)
 	if err != nil {
-		s.logger.Error("Failed to delete user", err, map[string]interface{}{"user_id": id})
+		s.logger.Error("Failed to delete user", err, map[string]interface{}{"user_id": id.String()})
 		return err
 	}
 
@@ -91,8 +93,26 @@ func (s *userService) DeleteUser(ctx context.Context, id string) error {
 	s.logger.Info("User deleted", map[string]interface{}{
 		"action":  "USER_DELETE",
 		"actor":   actorUsername,
-		"user_id": id,
+		"user_id": id.String(),
 	})
 
 	return nil
+}
+
+func (s *userService) GetUserByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	user, err := s.repo.GetByUserID(id)
+	if err != nil {
+		s.logger.Error("Failed to get user by ID", err, map[string]interface{}{
+			"user_id": id.String(),
+		})
+		return nil, err
+	}
+
+	s.logger.Info("User retrieved by ID", map[string]interface{}{
+		"action":   "USER_GET_BY_ID",
+		"user_id":  id.String(),
+		"username": user.Username,
+	})
+
+	return user, nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/M1ralai/go-modular-monolith-template/internal/modules/user/domain"
 	"github.com/M1ralai/go-modular-monolith-template/internal/modules/user/service"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -59,9 +60,37 @@ func (h *UserHandler) UserPost(w http.ResponseWriter, r *http.Request) {
 	utils.WriteJson(w, user, http.StatusCreated, "Kullanıcı başarıyla eklendi")
 }
 
+func (h *UserHandler) UserGetByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		resp := utils.ErrorResponse("VALIDATION_ERROR", "Geçersiz UUID formatı", err.Error())
+		utils.Return(w, http.StatusBadRequest, resp)
+		return
+	}
+
+	user, err := h.service.GetUserByID(r.Context(), id)
+	if err != nil {
+		resp := utils.ErrorResponse("NOT_FOUND", "Kullanıcı bulunamadı", err.Error())
+		utils.Return(w, http.StatusNotFound, resp)
+		return
+	}
+
+	utils.WriteJson(w, user, http.StatusOK, "Kullanıcı başarıyla getirildi")
+}
+
 func (h *UserHandler) UserDelete(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id := vars["id"]
+	idStr := vars["id"]
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		resp := utils.ErrorResponse("VALIDATION_ERROR", "Geçersiz UUID formatı", err.Error())
+		utils.Return(w, http.StatusBadRequest, resp)
+		return
+	}
 
 	if err := h.service.DeleteUser(r.Context(), id); err != nil {
 		resp := utils.ErrorResponse("INTERNAL_ERROR", "Kullanıcı silinemedi", err.Error())

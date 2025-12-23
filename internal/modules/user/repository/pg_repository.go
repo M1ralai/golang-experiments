@@ -2,6 +2,7 @@ package repository
 
 import (
 	"github.com/M1ralai/go-modular-monolith-template/internal/modules/user/domain"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -26,8 +27,16 @@ func (r *PostgresUserRepository) GetAll() ([]domain.User, error) {
 func (r *PostgresUserRepository) GetByUsername(username string) (*domain.User, error) {
 	user := &domain.User{}
 	query := `SELECT id, username, password, role, COALESCE(ad, '') as ad, COALESCE(soyad, '') as soyad, COALESCE(telefon, '') as telefon, COALESCE(email, '') as email FROM users WHERE username = $1`
-	err := r.db.Get(user, query, username)
-	if err != nil {
+	if err := r.db.Get(user, query, username); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (r *PostgresUserRepository) GetByUserID(userID uuid.UUID) (*domain.User, error) {
+	user := &domain.User{}
+	query := `SELECT id, username, COALESCE(ad, '') as ad, COALESCE(soyad, '') as soyad, COALESCE(email, '') as email FROM users WHERE id = $1`
+	if err := r.db.Get(user, query, userID); err != nil {
 		return nil, err
 	}
 	return user, nil
@@ -39,7 +48,7 @@ func (r *PostgresUserRepository) Create(user *domain.User) error {
 	return err
 }
 
-func (r *PostgresUserRepository) Delete(id string) error {
+func (r *PostgresUserRepository) Delete(id uuid.UUID) error {
 	query := `DELETE FROM users WHERE id = $1`
 	_, err := r.db.Exec(query, id)
 	return err

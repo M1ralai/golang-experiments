@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/eventbus"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/logger"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -37,6 +38,13 @@ type Server struct {
 
 func NewServer(db *sqlx.DB, zapLogger logger.LoggerWithMiddleware) *Server {
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	redisPassword := os.Getenv("REDIS_PASSWORD")
+	eventBus := eventbus.NewRedisBus(redisAddr, redisPassword, "task-service-group")
+
 	userRepository := userRepo.NewPostgresRepository(db)
 	userSvc := userService.NewService(userRepository, zapLogger)
 	userHandler := userHttp.NewHandler(userSvc)
@@ -44,11 +52,12 @@ func NewServer(db *sqlx.DB, zapLogger logger.LoggerWithMiddleware) *Server {
 	authSvc := authService.NewService(userRepository, zapLogger)
 	authHandler := authHttp.NewHandler(authSvc)
 
-	// Task module setup
 	taskRepository := taskRepo.NewPostgresTaskRepository(db)
 	assignmentRepository := taskRepo.NewPostgresAssignmentRepository(db)
 	activityRepository := taskRepo.NewPostgresActivityRepository(db)
-	taskSvc := taskService.NewTaskService(taskRepository, assignmentRepository, activityRepository, zapLogger)
+
+	userProvider := userRepo.NewUserProviderAdapter(userRepository)
+	taskSvc := taskService.NewTaskService(taskRepository, assignmentRepository, activityRepository, userProvider, eventBus, zapLogger)
 	taskHandler := taskHttp.NewHandler(taskSvc)
 
 	healthHandler := healthHttp.NewHandler()
@@ -75,9 +84,9 @@ func NewServer(db *sqlx.DB, zapLogger logger.LoggerWithMiddleware) *Server {
 
 	api.HandleFunc("/users", userHandler.UsersGet).Methods("GET")
 	api.HandleFunc("/users", userHandler.UserPost).Methods("POST")
+	api.HandleFunc("/users/{id}", userHandler.UserGetByID).Methods("GET")
 	api.HandleFunc("/users/{id}", userHandler.UserDelete).Methods("DELETE")
 
-	// Task routes
 	api.HandleFunc("/tasks", taskHandler.ListTasks).Methods("GET")
 	api.HandleFunc("/tasks", taskHandler.CreateTask).Methods("POST")
 	api.HandleFunc("/tasks/{id}", taskHandler.GetTask).Methods("GET")

@@ -4,7 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/M1ralai/go-modular-monolith-template/internal/common/events"
 	"github.com/M1ralai/go-modular-monolith-template/internal/common/utils"
+	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/eventbus"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/logger"
 	"github.com/M1ralai/go-modular-monolith-template/internal/modules/task/domain"
 	"github.com/google/uuid"
@@ -25,6 +27,8 @@ type taskService struct {
 	taskRepo     domain.TaskRepository
 	assignRepo   domain.AssignmentRepository
 	activityRepo domain.ActivityRepository
+	userProvider domain.UserProvider
+	eventBus     eventbus.EventBus
 	logger       logger.Logger
 }
 
@@ -32,12 +36,16 @@ func NewTaskService(
 	taskRepo domain.TaskRepository,
 	assignRepo domain.AssignmentRepository,
 	activityRepo domain.ActivityRepository,
+	userProvider domain.UserProvider,
+	eventBus eventbus.EventBus,
 	logger logger.Logger,
 ) TaskService {
 	return &taskService{
 		taskRepo:     taskRepo,
 		assignRepo:   assignRepo,
 		activityRepo: activityRepo,
+		userProvider: userProvider,
+		eventBus:     eventBus,
 		logger:       logger,
 	}
 }
@@ -46,7 +54,7 @@ func (s *taskService) CreateTask(ctx context.Context, req *domain.CreateTaskRequ
 	userIDStr := utils.GetUserIDFromContext(ctx)
 	createdBy, _ := uuid.Parse(userIDStr)
 	if createdBy == uuid.Nil {
-		createdBy = uuid.New() // Fallback for test/anonymous users
+		createdBy = uuid.New()
 	}
 
 	task := &domain.Task{
@@ -66,7 +74,6 @@ func (s *taskService) CreateTask(ctx context.Context, req *domain.CreateTaskRequ
 		return nil, err
 	}
 
-	// Log activity
 	activity := &domain.Activity{
 		ID:        uuid.New(),
 		TaskID:    task.ID,
@@ -121,11 +128,10 @@ func (s *taskService) UpdateTaskStatus(ctx context.Context, taskID string, req *
 		return err
 	}
 
-	// Log activity
 	userIDStr := utils.GetUserIDFromContext(ctx)
 	userID, _ := uuid.Parse(userIDStr)
 	if userID == uuid.Nil {
-		userID = uuid.New() // Fallback for test/anonymous users
+		userID = uuid.New()
 	}
 	activity := &domain.Activity{
 		ID:        uuid.New(),
@@ -162,7 +168,6 @@ func (s *taskService) AssignTask(ctx context.Context, taskID string, req *domain
 		return nil, err
 	}
 
-	// Log activity
 	activity := &domain.Activity{
 		ID:        uuid.New(),
 		TaskID:    assignment.TaskID,
@@ -172,10 +177,53 @@ func (s *taskService) AssignTask(ctx context.Context, taskID string, req *domain
 	}
 	_ = s.activityRepo.Create(ctx, activity)
 
+	userInfo, err := s.userProvider.GetUserByID(assignment.UserID)
+	if err != nil {
+		s.logger.Error("Failed to get user info for event", err, map[string]interface{}{
+			"user_id": req.UserID,
+		})
+
+		userInfo = &domain.UserInfo{
+			ID:       assignment.UserID,
+			Username: "Unknown",
+			Email:    "",
+		}
+	}
+
+	task, err := s.taskRepo.GetByID(ctx, taskID)
+	if err != nil {
+		s.logger.Error("Failed to get task info for event", err, map[string]interface{}{
+			"task_id": taskID,
+		})
+
+		task = &domain.Task{
+			ID:    assignment.TaskID,
+			Title: "Unknown Task",
+		}
+	}
+
+	go func() {
+		event := events.TaskAssignedEvent{
+			TaskID:    taskID,
+			TaskTitle: task.Title,
+			UserID:    req.UserID,
+			UserEmail: userInfo.Email,
+			UserName:  userInfo.Username,
+		}
+
+		if err := s.eventBus.Publish(context.Background(), events.TopicTaskAssigned, event); err != nil {
+			s.logger.Error("Failed to publish task assigned event", err, map[string]interface{}{
+				"task_id": taskID,
+				"user_id": req.UserID,
+			})
+		}
+	}()
+
 	s.logger.Info("Task assigned", map[string]interface{}{
-		"action":  "TASK_ASSIGN",
-		"task_id": taskID,
-		"user_id": req.UserID,
+		"action":     "TASK_ASSIGN",
+		"task_id":    taskID,
+		"user_id":    req.UserID,
+		"user_email": userInfo.Email,
 	})
 
 	return assignment, nil

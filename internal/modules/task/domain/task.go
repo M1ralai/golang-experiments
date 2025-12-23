@@ -24,7 +24,6 @@ type Task struct {
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
-// Request DTOs
 type CreateTaskRequest struct {
 	Title string `json:"title" validate:"required,min=1,max=255"`
 }
