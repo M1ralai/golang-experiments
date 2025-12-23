@@ -124,19 +124,7 @@ func (r *redisBus) handleMessage(ctx context.Context, topic string, entry redis.
 		return
 	}
 
-	log.Printf("Handler error for message %s: %v", entry.ID, err)
-
-	pending, _ := r.client.XPending(ctx, topic, r.group).Result()
-	if pending != nil {
-		for i := 0; i < MaxRetries; i++ {
-			time.Sleep(time.Duration(i+1) * time.Second)
-			if err := handler([]byte(payload)); err == nil {
-				r.client.XAck(ctx, topic, r.group, entry.ID)
-				log.Printf("✓ Retry %d succeeded for message %s", i+1, entry.ID)
-				return
-			}
-		}
-	}
+	log.Printf("Handler error for message %s: %v - moving to DLQ", entry.ID, err)
 
 	r.moveToDLQ(ctx, topic, entry)
 	r.client.XAck(ctx, topic, r.group, entry.ID)

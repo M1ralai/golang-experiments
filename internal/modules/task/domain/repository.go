@@ -1,6 +1,10 @@
 package domain
 
-import "context"
+import (
+	"context"
+
+	"github.com/jmoiron/sqlx"
+)
 
 type TaskRepository interface {
 	Create(ctx context.Context, task *Task) error
@@ -8,16 +12,14 @@ type TaskRepository interface {
 	List(ctx context.Context) ([]Task, error)
 
 	UpdateStatus(ctx context.Context, taskID string, status TaskStatus) error
+	BeginTx(ctx context.Context) (*sqlx.Tx, error)
 }
 
 type AssignmentRepository interface {
-	Create(ctx context.Context, assignment *TaskAssignment) error
-
-	GetByTask(ctx context.Context, taskID string) ([]TaskAssignment, error)
-
-	GetByUser(ctx context.Context, userID string) ([]TaskAssignment, error)
-
+	Create(ctx context.Context, tx *sqlx.Tx, assignment *TaskAssignment) error
 	Delete(ctx context.Context, assignmentID string) error
+	GetByTask(ctx context.Context, taskID string) ([]TaskAssignment, error)
+	BeginTx(ctx context.Context) (*sqlx.Tx, error)
 }
 
 type ScopeRepository interface {

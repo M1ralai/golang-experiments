@@ -17,6 +17,10 @@ func NewPostgresTaskRepository(db *sqlx.DB) domain.TaskRepository {
 	return &PostgresTaskRepository{db: db}
 }
 
+func (r *PostgresTaskRepository) BeginTx(ctx context.Context) (*sqlx.Tx, error) {
+	return r.db.BeginTxx(ctx, nil)
+}
+
 func (r *PostgresTaskRepository) Create(ctx context.Context, task *domain.Task) error {
 	query := `
 		INSERT INTO tasks (id, title, status, created_by, created_at, updated_at)
@@ -64,12 +68,22 @@ func NewPostgresAssignmentRepository(db *sqlx.DB) domain.AssignmentRepository {
 	return &PostgresAssignmentRepository{db: db}
 }
 
-func (r *PostgresAssignmentRepository) Create(ctx context.Context, assignment *domain.TaskAssignment) error {
+func (r *PostgresAssignmentRepository) BeginTx(ctx context.Context) (*sqlx.Tx, error) {
+	return r.db.BeginTxx(ctx, nil)
+}
+
+func (r *PostgresAssignmentRepository) Create(ctx context.Context, tx *sqlx.Tx, assignment *domain.TaskAssignment) error {
 	query := `
 		INSERT INTO task_assignments (id, task_id, user_id, created_at)
 		VALUES ($1, $2, $3, $4)
 	`
-	_, err := r.db.ExecContext(ctx, query,
+
+	var executor sqlx.ExtContext = r.db
+	if tx != nil {
+		executor = tx
+	}
+
+	_, err := executor.ExecContext(ctx, query,
 		assignment.ID, assignment.TaskID, assignment.UserID, assignment.CreatedAt)
 	return err
 }

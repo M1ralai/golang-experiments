@@ -12,6 +12,7 @@ import (
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/eventbus"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/logger"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/middleware"
+	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/outbox"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	authHttp "github.com/M1ralai/go-modular-monolith-template/internal/modules/auth/http"
@@ -48,7 +49,10 @@ func NewServer(db *sqlx.DB, zapLogger logger.LoggerWithMiddleware) *Server {
 	redisPassword := os.Getenv("REDIS_PASSWORD")
 	eventBus := eventbus.NewRedisBus(redisAddr, redisPassword, "task-service-group")
 
-	eventPool := eventbus.NewWorkerPool(eventBus, 10, 1000)
+	outboxRepo := outbox.NewPostgresRepository(db)
+	outboxProcessor := outbox.NewProcessor(outboxRepo, eventBus, 5*time.Second, 100)
+	go outboxProcessor.Start()
+	log.Println("✓ Outbox processor started")
 
 	userRepository := userRepo.NewPostgresRepository(db)
 	userSvc := userService.NewService(userRepository, zapLogger)
@@ -62,7 +66,7 @@ func NewServer(db *sqlx.DB, zapLogger logger.LoggerWithMiddleware) *Server {
 	activityRepository := taskRepo.NewPostgresActivityRepository(db)
 
 	userProvider := userRepo.NewUserProviderAdapter(userRepository)
-	taskSvc := taskService.NewTaskService(taskRepository, assignmentRepository, activityRepository, userProvider, eventPool, zapLogger)
+	taskSvc := taskService.NewTaskService(taskRepository, assignmentRepository, activityRepository, userProvider, outboxRepo, zapLogger)
 	taskHandler := taskHttp.NewHandler(taskSvc)
 
 	taskListener := notificationListener.NewTaskEventListener()

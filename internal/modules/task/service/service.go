@@ -2,12 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/M1ralai/go-modular-monolith-template/internal/common/events"
 	"github.com/M1ralai/go-modular-monolith-template/internal/common/utils"
-	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/eventbus"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/logger"
+	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/outbox"
 	"github.com/M1ralai/go-modular-monolith-template/internal/modules/task/domain"
 	"github.com/google/uuid"
 )
@@ -28,7 +29,7 @@ type taskService struct {
 	assignRepo   domain.AssignmentRepository
 	activityRepo domain.ActivityRepository
 	userProvider domain.UserProvider
-	eventPool    *eventbus.WorkerPool
+	outboxRepo   outbox.Repository
 	logger       logger.Logger
 }
 
@@ -37,7 +38,7 @@ func NewTaskService(
 	assignRepo domain.AssignmentRepository,
 	activityRepo domain.ActivityRepository,
 	userProvider domain.UserProvider,
-	eventPool *eventbus.WorkerPool,
+	outboxRepo outbox.Repository,
 	logger logger.Logger,
 ) TaskService {
 	return &taskService{
@@ -45,7 +46,7 @@ func NewTaskService(
 		assignRepo:   assignRepo,
 		activityRepo: activityRepo,
 		userProvider: userProvider,
-		eventPool:    eventPool,
+		outboxRepo:   outboxRepo,
 		logger:       logger,
 	}
 }
@@ -152,6 +153,13 @@ func (s *taskService) UpdateTaskStatus(ctx context.Context, taskID string, req *
 }
 
 func (s *taskService) AssignTask(ctx context.Context, taskID string, req *domain.AssignTaskRequest) (*domain.TaskAssignment, error) {
+	tx, err := s.assignRepo.BeginTx(ctx)
+	if err != nil {
+		s.logger.Error("Failed to begin transaction", err, nil)
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	assignment := &domain.TaskAssignment{
 		ID:        uuid.New(),
 		TaskID:    uuid.MustParse(taskID),
@@ -159,8 +167,7 @@ func (s *taskService) AssignTask(ctx context.Context, taskID string, req *domain
 		CreatedAt: time.Now(),
 	}
 
-	err := s.assignRepo.Create(ctx, assignment)
-	if err != nil {
+	if err := s.assignRepo.Create(ctx, tx, assignment); err != nil {
 		s.logger.Error("Failed to assign task", err, map[string]interface{}{
 			"task_id": taskID,
 			"user_id": req.UserID,
@@ -182,7 +189,6 @@ func (s *taskService) AssignTask(ctx context.Context, taskID string, req *domain
 		s.logger.Error("Failed to get user info for event", err, map[string]interface{}{
 			"user_id": req.UserID,
 		})
-
 		userInfo = &domain.UserInfo{
 			ID:       assignment.UserID,
 			Username: "Unknown",
@@ -195,7 +201,6 @@ func (s *taskService) AssignTask(ctx context.Context, taskID string, req *domain
 		s.logger.Error("Failed to get task info for event", err, map[string]interface{}{
 			"task_id": taskID,
 		})
-
 		task = &domain.Task{
 			ID:    assignment.TaskID,
 			Title: "Unknown Task",
@@ -210,11 +215,30 @@ func (s *taskService) AssignTask(ctx context.Context, taskID string, req *domain
 		UserName:  userInfo.Username,
 	}
 
-	if err := s.eventPool.PublishAsync(events.TopicTaskAssigned, event); err != nil {
-		s.logger.Error("Failed to queue task assigned event", err, map[string]interface{}{
+	eventPayload, err := json.Marshal(event)
+	if err != nil {
+		s.logger.Error("Failed to marshal event", err, nil)
+		return nil, err
+	}
+
+	outboxEvent := &outbox.OutboxEvent{
+		AggregateType: "task",
+		AggregateID:   assignment.TaskID,
+		EventType:     events.TopicTaskAssigned,
+		Payload:       eventPayload,
+	}
+
+	if err := s.outboxRepo.Create(ctx, tx, outboxEvent); err != nil {
+		s.logger.Error("Failed to create outbox event", err, map[string]interface{}{
 			"task_id": taskID,
 			"user_id": req.UserID,
 		})
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		s.logger.Error("Failed to commit transaction", err, nil)
+		return nil, err
 	}
 
 	s.logger.Info("Task assigned", map[string]interface{}{
