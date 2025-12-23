@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/M1ralai/go-modular-monolith-template/internal/common/events"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/eventbus"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/logger"
 	"github.com/M1ralai/go-modular-monolith-template/internal/infrastructure/middleware"
@@ -25,6 +26,8 @@ import (
 	taskService "github.com/M1ralai/go-modular-monolith-template/internal/modules/task/service"
 
 	healthHttp "github.com/M1ralai/go-modular-monolith-template/internal/modules/health/http"
+
+	notificationListener "github.com/M1ralai/go-modular-monolith-template/internal/modules/notification/listener"
 
 	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
@@ -45,6 +48,8 @@ func NewServer(db *sqlx.DB, zapLogger logger.LoggerWithMiddleware) *Server {
 	redisPassword := os.Getenv("REDIS_PASSWORD")
 	eventBus := eventbus.NewRedisBus(redisAddr, redisPassword, "task-service-group")
 
+	eventPool := eventbus.NewWorkerPool(eventBus, 10, 1000)
+
 	userRepository := userRepo.NewPostgresRepository(db)
 	userSvc := userService.NewService(userRepository, zapLogger)
 	userHandler := userHttp.NewHandler(userSvc)
@@ -57,8 +62,12 @@ func NewServer(db *sqlx.DB, zapLogger logger.LoggerWithMiddleware) *Server {
 	activityRepository := taskRepo.NewPostgresActivityRepository(db)
 
 	userProvider := userRepo.NewUserProviderAdapter(userRepository)
-	taskSvc := taskService.NewTaskService(taskRepository, assignmentRepository, activityRepository, userProvider, eventBus, zapLogger)
+	taskSvc := taskService.NewTaskService(taskRepository, assignmentRepository, activityRepository, userProvider, eventPool, zapLogger)
 	taskHandler := taskHttp.NewHandler(taskSvc)
+
+	taskListener := notificationListener.NewTaskEventListener()
+	eventBus.Subscribe(context.Background(), events.TopicTaskAssigned, taskListener.HandleTaskAssigned)
+	log.Println("✓ Task event listener subscribed to:", events.TopicTaskAssigned)
 
 	healthHandler := healthHttp.NewHandler()
 

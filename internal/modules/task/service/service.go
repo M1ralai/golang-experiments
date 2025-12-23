@@ -28,7 +28,7 @@ type taskService struct {
 	assignRepo   domain.AssignmentRepository
 	activityRepo domain.ActivityRepository
 	userProvider domain.UserProvider
-	eventBus     eventbus.EventBus
+	eventPool    *eventbus.WorkerPool
 	logger       logger.Logger
 }
 
@@ -37,7 +37,7 @@ func NewTaskService(
 	assignRepo domain.AssignmentRepository,
 	activityRepo domain.ActivityRepository,
 	userProvider domain.UserProvider,
-	eventBus eventbus.EventBus,
+	eventPool *eventbus.WorkerPool,
 	logger logger.Logger,
 ) TaskService {
 	return &taskService{
@@ -45,7 +45,7 @@ func NewTaskService(
 		assignRepo:   assignRepo,
 		activityRepo: activityRepo,
 		userProvider: userProvider,
-		eventBus:     eventBus,
+		eventPool:    eventPool,
 		logger:       logger,
 	}
 }
@@ -202,22 +202,20 @@ func (s *taskService) AssignTask(ctx context.Context, taskID string, req *domain
 		}
 	}
 
-	go func() {
-		event := events.TaskAssignedEvent{
-			TaskID:    taskID,
-			TaskTitle: task.Title,
-			UserID:    req.UserID,
-			UserEmail: userInfo.Email,
-			UserName:  userInfo.Username,
-		}
+	event := events.TaskAssignedEvent{
+		TaskID:    taskID,
+		TaskTitle: task.Title,
+		UserID:    req.UserID,
+		UserEmail: userInfo.Email,
+		UserName:  userInfo.Username,
+	}
 
-		if err := s.eventBus.Publish(context.Background(), events.TopicTaskAssigned, event); err != nil {
-			s.logger.Error("Failed to publish task assigned event", err, map[string]interface{}{
-				"task_id": taskID,
-				"user_id": req.UserID,
-			})
-		}
-	}()
+	if err := s.eventPool.PublishAsync(events.TopicTaskAssigned, event); err != nil {
+		s.logger.Error("Failed to queue task assigned event", err, map[string]interface{}{
+			"task_id": taskID,
+			"user_id": req.UserID,
+		})
+	}
 
 	s.logger.Info("Task assigned", map[string]interface{}{
 		"action":     "TASK_ASSIGN",
