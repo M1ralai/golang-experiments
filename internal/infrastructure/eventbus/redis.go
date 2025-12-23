@@ -11,6 +11,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+const (
+	MaxRetries = 3
+	DLQSuffix  = "_dlq"
+	BatchSize  = 50
+)
+
 type EventBus interface {
 	Publish(ctx context.Context, topic string, payload any) error
 	Subscribe(ctx context.Context, topic string, handler func(payload []byte) error)
@@ -26,12 +32,20 @@ type redisBus struct {
 }
 
 func NewRedisBus(addr, password, groupName string) EventBus {
+	if addr == "" {
+		log.Fatal("REDIS_ADDR is required")
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     addr,
 		Password: password,
 	})
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
 
 	hostname, _ := os.Hostname()
 	if hostname == "" {
@@ -81,7 +95,7 @@ func (r *redisBus) listenLoop(ctx context.Context, topic string, handler func([]
 				Group:    r.group,
 				Consumer: r.worker,
 				Streams:  []string{topic, ">"},
-				Count:    1,
+				Count:    BatchSize,
 				Block:    time.Second,
 			}).Result()
 
@@ -95,45 +109,86 @@ func (r *redisBus) listenLoop(ctx context.Context, topic string, handler func([]
 			}
 
 			for _, entry := range entries[0].Messages {
-				payload := entry.Values["event_data"].(string)
-
-				if err := handler([]byte(payload)); err == nil {
-					r.client.XAck(ctx, topic, r.group, entry.ID)
-				} else {
-					log.Printf("Handler error for message %s: %v", entry.ID, err)
-				}
+				r.handleMessage(ctx, topic, entry, handler)
 			}
 		}
+	}
+}
+
+func (r *redisBus) handleMessage(ctx context.Context, topic string, entry redis.XMessage, handler func([]byte) error) {
+	payload := entry.Values["event_data"].(string)
+
+	err := handler([]byte(payload))
+	if err == nil {
+		r.client.XAck(ctx, topic, r.group, entry.ID)
+		return
+	}
+
+	log.Printf("Handler error for message %s: %v", entry.ID, err)
+
+	pending, _ := r.client.XPending(ctx, topic, r.group).Result()
+	if pending != nil {
+		for i := 0; i < MaxRetries; i++ {
+			time.Sleep(time.Duration(i+1) * time.Second)
+			if err := handler([]byte(payload)); err == nil {
+				r.client.XAck(ctx, topic, r.group, entry.ID)
+				log.Printf("✓ Retry %d succeeded for message %s", i+1, entry.ID)
+				return
+			}
+		}
+	}
+
+	r.moveToDLQ(ctx, topic, entry)
+	r.client.XAck(ctx, topic, r.group, entry.ID)
+}
+
+func (r *redisBus) moveToDLQ(ctx context.Context, topic string, entry redis.XMessage) {
+	dlqTopic := topic + DLQSuffix
+
+	err := r.client.XAdd(ctx, &redis.XAddArgs{
+		Stream: dlqTopic,
+		Values: entry.Values,
+	}).Err()
+
+	if err != nil {
+		log.Printf("Failed to move message %s to DLQ: %v", entry.ID, err)
+	} else {
+		log.Printf("⚠️  Moved message %s to DLQ: %s", entry.ID, dlqTopic)
 	}
 }
 
 func (r *redisBus) processPendingMessages(ctx context.Context, topic string, handler func([]byte) error) {
 	log.Printf("Processing pending messages for topic: %s", topic)
 
-	pending, err := r.client.XReadGroup(ctx, &redis.XReadGroupArgs{
-		Group:    r.group,
-		Consumer: r.worker,
-		Streams:  []string{topic, "0"},
-		Count:    100,
-	}).Result()
+	start := "0"
+	for {
+		pending, err := r.client.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    r.group,
+			Consumer: r.worker,
+			Streams:  []string{topic, start},
+			Count:    BatchSize,
+		}).Result()
 
-	if err != nil && err != redis.Nil {
-		log.Printf("Failed to read pending messages: %v", err)
-		return
-	}
+		if err != nil && err != redis.Nil {
+			log.Printf("Failed to read pending messages: %v", err)
+			return
+		}
 
-	if len(pending) > 0 {
+		if len(pending) == 0 || len(pending[0].Messages) == 0 {
+			break
+		}
+
 		for _, entry := range pending[0].Messages {
-			payload := entry.Values["event_data"].(string)
+			r.handleMessage(ctx, topic, entry, handler)
+			start = entry.ID
+		}
 
-			if err := handler([]byte(payload)); err == nil {
-				r.client.XAck(ctx, topic, r.group, entry.ID)
-				log.Printf("Processed pending message: %s", entry.ID)
-			} else {
-				log.Printf("Failed to process pending message %s: %v", entry.ID, err)
-			}
+		if len(pending[0].Messages) < BatchSize {
+			break
 		}
 	}
+
+	log.Printf("✓ Pending messages processed for topic: %s", topic)
 }
 
 func (r *redisBus) Close() error {
