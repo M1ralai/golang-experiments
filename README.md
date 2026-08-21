@@ -1,162 +1,57 @@
-# Go Modüler Monolit Template
+# Go Backend Architecture Experiments
 
-JWT kimlik doğrulama, PostgreSQL veritabanı, yapısal loglama ve metrikler ile üretime hazır, temiz bir Go API şablonu.
+A modular Go backend used to explore event-driven application patterns around a task-assignment domain. It combines a conventional HTTP/service/repository stack with PostgreSQL, Redis Streams, a transactional outbox, and asynchronous consumers.
 
-## 🏗️ Mimari
+## What this project demonstrates
 
-```
-├── cmd/api/                    # Uygulama giriş noktası
-│   └── main.go                 # Bootstrap & lifecycle yönetimi
-├── internal/
-│   ├── app/
-│   │   └── server.go           # HTTP sunucu & routing
-│   ├── common/
-│   │   ├── stype/              # Paylaşılan tipler (API response formatı)
-│   │   ├── utils/              # Yardımcı fonksiyonlar (JSON, response writers)
-│   │   └── validation/         # Request validasyonu (go-playground)
-│   ├── infrastructure/
-│   │   ├── database/           # PostgreSQL bağlantısı & migration'lar
-│   │   ├── logger/             # Zap yapısal loglama (DB'ye kayıt)
-│   │   ├── metrics/            # Prometheus metrikleri
-│   │   └── middleware/         # Auth, recovery, timeout, metrics middleware
-│   └── modules/
-│       ├── auth/               # JWT kimlik doğrulama (login)
-│       ├── health/             # Health check endpoint
-│       ├── task/               # Task yönetimi (CRUD + atama)
-│       └── user/               # Kullanıcı CRUD işlemleri
-└── go.mod
+- Domain-oriented modules for authentication, users, tasks, and notifications
+- PostgreSQL repositories and embedded SQL migrations
+- A transactional outbox written in the same database transaction as task changes
+- A background processor that publishes pending outbox records to Redis Streams
+- Consumer-group-based event handling and a notification listener
+- A bounded in-process worker pool for asynchronous publish jobs
+- JWT middleware, Prometheus HTTP metrics, and Zap logging
+
+## Architecture
+
+```text
+HTTP request
+  -> handler -> task service -> PostgreSQL transaction
+                              -> task/assignment changes
+                              -> outbox event
+
+outbox processor -> Redis Stream -> consumer group -> notification listener
 ```
 
-## 🚀 Özellikler
+The HTTP path keeps module boundaries similar to a modular monolith: handlers call services, services use repository contracts, and PostgreSQL implementations own SQL. For task-assignment events, the service stores the domain change and outbox record together. A background processor polls unprocessed rows and publishes them to Redis; consumers acknowledge successful work and failed messages can be moved to a dead-letter stream.
 
-- **JWT Kimlik Doğrulama** - Rol ve user_id destekli güvenli token tabanlı auth
-- **UUID Primary Keys** - Tüm tablolarda UUID kullanımı
-- **Request Validasyonu** - go-playground/validator ile Türkçe çeviriler
-- **Veritabanı Migration'ları** - golang-migrate ile başlangıçta otomatik migration
-- **Yapısal Loglama** - Veritabanına kayıt yapan Zap logger
-- **Prometheus Metrikleri** - `/metrics` endpoint'inde hazır metrikler
-- **Graceful Shutdown** - Düzgün sinyal yönetimi ve temizlik
-- **Middleware Yığını** - Recovery, timeout, auth ve metrics middleware
-- **Temiz Mimari** - Domain → Repository → Service → HTTP katmanları
-- **Task Modülü** - Task yönetimi, kullanıcı ataması ve aktivite takibi
+The notification listener currently demonstrates the consumer boundary by logging an email-shaped notification rather than integrating a mail provider.
 
-## 📋 Gereksinimler
+## Run locally
 
-- Go 1.21+
-- PostgreSQL 14+
+Requirements: Go 1.25+, PostgreSQL, and Redis.
 
-## 🛠️ Kurulum
-
-1. Repository'yi klonla
-2. Ortam dosyasını kopyala:
-   ```bash
-   cp .env.example .env
-   ```
-3. `.env` dosyasını yapılandır:
-   ```env
-   DB_HOST=localhost
-   DB_PORT=5432
-   DB_USER=postgres
-   DB_PASSWORD=postgres
-   DB_NAME=myapp
-   JWT_SECRET=cok-gizli-anahtar-bunu-degistir
-   API_PORT=8080
-   ```
-4. Uygulamayı çalıştır:
-   ```bash
-   go run cmd/api/main.go
-   ```
-
-## 📡 API Endpoint'leri
-
-### Public Route'lar
-
-| Metod | Endpoint  | Açıklama              |
-|-------|-----------|----------------------|
-| POST  | /login    | Kullanıcı girişi     |
-| GET   | /health   | Sağlık kontrolü      |
-| GET   | /metrics  | Prometheus metrikleri|
-
-### Korumalı Route'lar (JWT Gerekli)
-
-#### User Modülü
-
-| Metod  | Endpoint        | Açıklama                |
-|--------|-----------------|------------------------|
-| GET    | /api/users      | Tüm kullanıcıları listele |
-| POST   | /api/users      | Yeni kullanıcı oluştur   |
-| DELETE | /api/users/{id} | Kullanıcı sil           |
-
-#### Task Modülü
-
-| Metod  | Endpoint                       | Açıklama                    |
-|--------|--------------------------------|----------------------------|
-| GET    | /api/tasks                     | Tüm task'ları listele       |
-| POST   | /api/tasks                     | Yeni task oluştur          |
-| GET    | /api/tasks/{id}                | Task detayını getir        |
-| PATCH  | /api/tasks/{id}/status         | Task durumunu güncelle     |
-| GET    | /api/tasks/{id}/assignments    | Task atamalarını listele   |
-| POST   | /api/tasks/{id}/assignments    | Task'a kullanıcı ata       |
-| DELETE | /api/tasks/assignments/{id}    | Task atamasını kaldır      |
-
-## 🔧 Yeni Modül Ekleme
-
-Katmanlı yapıyı takip et:
-
-1. **Domain** (`internal/modules/moduladi/domain/`)
-   - `entity.go` - Veri yapıları (JSON/DB tag'leri ile)
-   - `repository.go` - Repository interface'i
-
-2. **Repository** (`internal/modules/moduladi/repository/`)
-   - `pg_repository.go` - PostgreSQL implementasyonu
-
-3. **Service** (`internal/modules/moduladi/service/`)
-   - `service.go` - İş mantığı (infrastructure logger ile)
-
-4. **HTTP** (`internal/modules/moduladi/http/`)
-   - `handler.go` - HTTP handler'ları
-
-5. **Migration** (`internal/infrastructure/database/migrations/`)
-   - `000XXX_create_xxx_tables.up.sql` - Tablo oluşturma
-   - `000XXX_create_xxx_tables.down.sql` - Rollback
-
-6. **Entegrasyon**
-   - `internal/app/server.go` dosyasında repo, service ve handler'ı bağla
-   - Route'ları ekle
-
-7. **Dokümantasyon**
-   - `api.md` - Endpoint dokümantasyonu
-
-## 📦 Teknoloji Yığını
-
-- **Router**: gorilla/mux
-- **Veritabanı**: sqlx + lib/pq
-- **Migration**: golang-migrate
-- **Auth**: golang-jwt
-- **Validasyon**: go-playground/validator
-- **Loglama**: uber/zap
-- **Metrikler**: prometheus/client_golang
-- **Şifreleme**: bcrypt
-
-## 📁 Modül Yapısı
-
-Her modül aşağıdaki yapıyı takip eder:
-
-```
-modules/
-└── moduladi/
-    ├── api.md              # API dokümantasyonu
-    ├── domain/
-    │   ├── entity.go       # Domain entity'leri
-    │   └── repository.go   # Repository interface'leri
-    ├── repository/
-    │   └── pg_repository.go # PostgreSQL implementasyonu
-    ├── service/
-    │   └── service.go      # İş mantığı katmanı
-    └── http/
-        └── handler.go      # HTTP handler'ları
+```bash
+git clone https://github.com/M1ralai/golang-experiments.git
+cd golang-experiments
+cp .env.example .env
+go mod download
+go run cmd/api/main.go
 ```
 
-## 📄 Lisans
+Set the PostgreSQL connection, `JWT_SECRET`, and `REDIS_ADDR` in `.env`. Migrations run during startup.
 
-MIT
+After startup, infrastructure endpoints include:
+
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/metrics
+```
+
+## Limitations
+
+- This repository is an architecture experiment, not a production-ready service.
+- The notification consumer logs a simulated email; it does not send one.
+- Outbox retries, pending-message recovery, and dead-letter behavior have not been validated under sustained failure or load.
+- Automated tests and deployment documentation are limited.
+- The module path still uses the original template name, so extracting the experiment as a reusable package would require cleanup.
